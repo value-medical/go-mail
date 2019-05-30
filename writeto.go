@@ -70,6 +70,7 @@ func (m *Message) hasAlternativePart() bool {
 
 type messageWriter struct {
 	w          io.Writer
+	passBcc    bool
 	n          int64
 	writers    [3]*multipart.Writer
 	partWriter io.Writer
@@ -248,9 +249,10 @@ func (w *messageWriter) writeLine(s string, charsLeft int) string {
 func (w *messageWriter) writeHeaders(h map[string][]string) {
 	if w.depth == 0 {
 		for k, v := range h {
-			if k != "Bcc" {
-				w.writeHeader(k, v...)
+			if k == "Bcc" && !w.passBcc {
+				continue
 			}
+			w.writeHeader(k, v...)
 		}
 	} else {
 		w.createPart(h)
@@ -307,6 +309,24 @@ func (w *base64LineWriter) Write(p []byte) (int, error) {
 	w.lineLen += len(p)
 
 	return n + len(p), nil
+}
+
+// MessageWriterWrapper wraps a message and writer options.
+type MessageWriterWrapper struct {
+	m       *Message
+	passBcc bool
+}
+
+// WriterWrapper wraps a message and sets writer options.
+func (m *Message) WriterWrapper(passBcc bool) *MessageWriterWrapper {
+	return &MessageWriterWrapper{m, passBcc}
+}
+
+// WriteTo implements io.WriterTo. It dumps the whole message into w.
+func (ww *MessageWriterWrapper) WriteTo(w io.Writer) (int64, error) {
+	mw := &messageWriter{w: w, passBcc: ww.passBcc}
+	mw.writeMessage(ww.m)
+	return mw.n, mw.err
 }
 
 // Stubbed out for testing.
